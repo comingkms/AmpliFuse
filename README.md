@@ -3,7 +3,7 @@ Amplicon simulation tool with enhance chimera generation for Illumina platforms.
 
 AmpliFuse is a Python script that facilitates  the generation of Illumina amplion seqecning raw reads inc
 
-+ [Requirements](#system-requirements)
++ [Requirements](#Requirements)
 + [Installation](#installation)
 + [Usage](#usage)
 + [Output files](#output-files)
@@ -38,7 +38,7 @@ To ensure the availability of the `AmpliFuse` command, it is essential to add th
 export PATH=/absolute/path/to/AmpliFuse:${PATH}
 ```
 
-## Usage and command line options
+## Usage
 
 
 Activate AmpliFuse conda environment:
@@ -49,7 +49,7 @@ conda activate AmpliFuse
 Running AmpliFuse:
 ```
 $AmpliFuse -h
-usage: AmpliFuse --input FASTA --outdir DIR --pcr-primers-file FILE --n-reads N --model MODEL --cpu N [other options]
+usage: AmpliFuse_v0.5 --input FASTA --outdir DIR --pcr-primers-file FILE --n-reads N --model MODEL --cpu N [other options]
 
 Amplicon chimera pipeline
 
@@ -58,16 +58,16 @@ options:
   --version             show program's version number and exit
 
 Input & output:
-  --input INPUT         Input FASTA of templates (default: None)
-  --outdir OUTDIR       Output directory (creates pcr/, chimera/, simulated/) (default: None)
+  --input INPUT         Input FASTA of templates
+  --outdir OUTDIR       Output directory (creates pcr/, chimera/, simulated/)
   --pick-n PICK_N       Randomly pick N templates before PCR/chimera (0 or >=total = keep all) (default: 30)
   --verbose, -v         Verbose logging (default: False)
 
 PCR:
   --ispcr-path ISPCR_PATH
-                        Path to in_silico_PCR.pl (default: script folder) (default: None)
+                        Path to in_silico_PCR.pl (default: script folder)
   --pcr-primers-file PCR_PRIMERS_FILE
-                        Primers file for -p (fwd<TAB>rev<TAB>output_prefix) (default: None)
+                        Primers file for -p (fwd<TAB>rev<TAB>output_prefix)
 
 Chimera generation:
   --rate RATE           Chimera rate (proportion of PCR amplicons) (default: 0.05)
@@ -99,7 +99,7 @@ Chimera generation:
                         Desired effective chimera fraction when using --simera-rate (default 0.2). (default: 0.2)
 
 Simulator (InSilicoSeq):
-  --n-reads N_READS     (--n_reads) Total reads to simulate (default: None)
+  --n-reads N_READS     (--n_reads) Total reads to simulate (default: 10000)
   --model MODEL         (--model) Sequencer model (e.g., nextseq, miseq) (default: nextseq)
   --cpu CPU             (--cpus) CPU threads for ISS (default: 4)
   --abundance, -a {uniform,halfnormal,exponential,lognormal,zero-inflated-lognormal}
