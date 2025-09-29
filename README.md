@@ -33,14 +33,19 @@ pip install numpy biopython InSilicoSeq   # Python deps
 ```
 3. git clone AmpliFuse repo:
 ```bash
-git clone 
+git clone https://github.com/comingkms/AmpliFuse.git
 ```
-4.Download [in_silico_PCR.pl](https://github.com/egonozer/in_silico_pcr) and save it into the AmpliFuse folder. 
-
-5. To ensure the availability of the `AmpliFuse` command, it is essential to add the absolute path of AmpliFuse's directory to your PATH environment variable. This can be done by adding the following line to your `~/.bashrc` file:
-
+4. Download [in_silico_PCR.pl](https://github.com/egonozer/in_silico_pcr) and save it into the AmpliFuse folder. 
+```bash
+git clone https://github.com/egonozer/in_silico_pcr.git
+mv in_silico_pcr/in_silico_pCR.pl AmpliFuse/in_silico_pCR.pl
+chmod +x AmpliFuse/in_silico_pCR.pl
 ```
-export PATH=/absolute/path/to/AmpliFuse:${PATH}
+5. Make AmpliFuse available on your PATH
+   Add AmpliFuse’s directory to your PATH so the amplifuse (or AmpliFuse) command is found anywhere.
+```
+echo 'export PATH="$HOME/path/to/AmpliFuse:$PATH"' >> ~/.bashrc
+source ~/.bashrc
 ```
 
 ## Usage
@@ -130,5 +135,6 @@ OUTPUT_DIR/
 ## Reference
 + https://insilicoseq.readthedocs.io/en/latest/
 + https://github.com/egonozer/in_silico_pcr
-+ 
++ Edgar RC, Haas BJ, Clemente JC, Quince C, Knight R. 2011. UCHIME improves sensitivity and speed of chimera detection. Bioinformatics 27:2194-200.
++ Nichols B, Quince C. 2016. Simera: Modelling the PCR Process to Simulate Realistic Chimera Formation. bioRxiv doi:10.1101/072447:072447.
 
