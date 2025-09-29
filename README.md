@@ -13,13 +13,12 @@ AmpliFuse is a Python script that facilitates  the generation of Illumina amplio
 ## Requirements
 
 AmpliFuse was developed and tested with Python 3.13.7 on Ubuntu 22.04.5 LTS. It requires the installation and utilization of specific tools.
-+ Tool or pipleine:
+Tools:
 + [in_silico_PCR.pl](https://github.com/egonozer/in_silico_pcr)
 + [InSilicoSeq](https://github.com/HadrienG/InSilicoSeq)
-
 + Python standard library plus:
-+  [numpy](https://numpy.org/)
-+  [biopython](https://biopython.org/)
+   +  [numpy](https://numpy.org/)
+   +  [biopython](https://biopython.org/)
     
 ## Installation
 
@@ -28,9 +27,8 @@ The easiest and most convenient way to install AmpliFuse dependencies is by usin
 git clone https://github.com/comingkms/AmpliFuse.git
 cd AmpliFuse
 conda env create -n AmpliFuse
-
 ```
-Download [in_silico_PCR.pl](https://github.com/egonozer/in_silico_pcr)<sup>1</sup> and save it into the AmpliFuse folder. 
+Download [in_silico_PCR.pl](https://github.com/egonozer/in_silico_pcr) and save it into the AmpliFuse folder. 
 
 To ensure the availability of the `AmpliFuse` command, it is essential to add the absolute path of AmpliFuse's directory to your PATH environment variable. This can be done by adding the following line to your `~/.bashrc` file:
 
@@ -40,16 +38,14 @@ export PATH=/absolute/path/to/AmpliFuse:${PATH}
 
 ## Usage
 
-
 Activate AmpliFuse conda environment:
 ```
 conda activate AmpliFuse
 ```
-
 Running AmpliFuse:
 ```
 $AmpliFuse -h
-usage: AmpliFuse_v0.5 --input FASTA --outdir DIR --pcr-primers-file FILE --n-reads N --model MODEL --cpu N [other options]
+usage: AmpliFuse --input FASTA --outdir DIR --pcr-primers-file FILE --n-reads N --model MODEL --cpu N [other options]
 
 Amplicon chimera pipeline
 
@@ -104,7 +100,6 @@ Simulator (InSilicoSeq):
   --cpu CPU             (--cpus) CPU threads for ISS (default: 4)
   --abundance, -a {uniform,halfnormal,exponential,lognormal,zero-inflated-lognormal}
                         (--abundance) Abundance distribution model (default: lognormal)
-
 ```
 
 ## Output files
