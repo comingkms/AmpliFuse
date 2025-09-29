@@ -1,7 +1,9 @@
 # AmpliFuse
-Amplicon simulation tool with enhance chimera generation for Illumina platforms. 
 
-AmpliFuse is a Python script that facilitates  the generation of Illumina amplion seqecning raw reads inc
+AmpliFuse is a Python script for simulating amplicons and PCR chimeras, then generating Illumina reads. It wraps three stages:
+1.  In silico PCR on a subset of template sequences
+2.  Chimera simulation using either a Breakpoint & Template-Switching (BTS) model or Simera 2 model
+3.  Illumina read simulation with InSilicoSeq under the amplicon model
 
 + [Requirements](#Requirements)
 + [Installation](#installation)
@@ -9,28 +11,33 @@ AmpliFuse is a Python script that facilitates  the generation of Illumina amplio
 + [Output files](#output-files)
 + [Reference](#reference)  
 
-
 ## Requirements
 
 AmpliFuse was developed and tested with Python 3.13.7 on Ubuntu 22.04.5 LTS. It requires the installation and utilization of specific tools.
-Tools:
-+ [in_silico_PCR.pl](https://github.com/egonozer/in_silico_pcr)
-+ [InSilicoSeq](https://github.com/HadrienG/InSilicoSeq)
++External tools:
+   + [in_silico_PCR.pl](https://github.com/egonozer/in_silico_pcr)
+   + [InSilicoSeq](https://github.com/HadrienG/InSilicoSeq)
 + Python standard library plus:
    +  [numpy](https://numpy.org/)
    +  [biopython](https://biopython.org/)
     
 ## Installation
 
-The easiest and most convenient way to install AmpliFuse dependencies is by using conda in an isolated environment. This method ensures a smooth and hassle-free installation process.
+1. Create a Conda environment (recommended)
 ```bash
-git clone https://github.com/comingkms/AmpliFuse.git
-cd AmpliFuse
-conda env create -n AmpliFuse
+conda env create -n AmpliFuse -y
 ```
-Download [in_silico_PCR.pl](https://github.com/egonozer/in_silico_pcr) and save it into the AmpliFuse folder. 
+2. install Dependencies
+```bash
+pip install numpy biopython InSilicoSeq   # Python deps
+```
+3. git clone AmpliFuse repo:
+```bash
+git clone 
+```
+4.Download [in_silico_PCR.pl](https://github.com/egonozer/in_silico_pcr) and save it into the AmpliFuse folder. 
 
-To ensure the availability of the `AmpliFuse` command, it is essential to add the absolute path of AmpliFuse's directory to your PATH environment variable. This can be done by adding the following line to your `~/.bashrc` file:
+5. To ensure the availability of the `AmpliFuse` command, it is essential to add the absolute path of AmpliFuse's directory to your PATH environment variable. This can be done by adding the following line to your `~/.bashrc` file:
 
 ```
 export PATH=/absolute/path/to/AmpliFuse:${PATH}
