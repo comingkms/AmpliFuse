@@ -1,9 +1,9 @@
 # AmpliFuse
 
 AmpliFuse is a Python script for simulating amplicons and PCR chimeras, then generating Illumina reads. It wraps three stages:
-1.  In silico PCR on a subset of template sequences
-2.  Chimera simulation 
-3.  Illumina read simulation
+1.  In silico PCR on a subset of template sequences<sup>1</sup>
+2.  Chimera simulation<sup>2,3</sup> 
+3.  Illumina read simulation<sup>4</sup>
 
 + [Requirements](#Requirements)
 + [Installation](#installation)
@@ -137,8 +137,9 @@ OUTPUT_DIR/
 ```
 
 ## Reference
-+ https://insilicoseq.readthedocs.io/en/latest/
-+ https://github.com/egonozer/in_silico_pcr
-+ Edgar RC, Haas BJ, Clemente JC, Quince C, Knight R. 2011. UCHIME improves sensitivity and speed of chimera detection. Bioinformatics 27:2194-200.
-+ Nichols B, Quince C. 2016. Simera: Modelling the PCR Process to Simulate Realistic Chimera Formation. bioRxiv doi:10.1101/072447:072447.
+
+1. https://github.com/egonozer/in_silico_pcr
+2. Edgar RC, Haas BJ, Clemente JC, Quince C, Knight R. 2011. UCHIME improves sensitivity and speed of chimera detection. Bioinformatics 27:2194-200.
+3. Nichols B, Quince C. 2016. Simera: Modelling the PCR Process to Simulate Realistic Chimera Formation. bioRxiv doi:10.1101/072447:072447.
+4. https://insilicoseq.readthedocs.io/en/latest/
 
