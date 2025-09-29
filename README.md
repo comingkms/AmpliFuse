@@ -23,13 +23,13 @@ AmpliFuse was developed and tested with Python 3.13.7 on Ubuntu 22.04.5 LTS. It 
     
 ## Installation
 
-1. Create a Conda environment (recommended)
+1. Create a Conda environment
 ```bash
 conda env create -n AmpliFuse -y
 ```
 2. install Dependencies
 ```bash
-pip install numpy biopython InSilicoSeq   # Python deps
+pip install numpy biopython InSilicoSeq  
 ```
 3. git clone AmpliFuse repo:
 ```bash
