@@ -34,11 +34,15 @@ pip install numpy biopython InSilicoSeq   # Python deps
 3. git clone AmpliFuse repo:
 ```bash
 git clone https://github.com/comingkms/AmpliFuse.git
+
+chmod +x AmpliFuse/AmpliFuse
 ```
 4. Download [in_silico_PCR.pl](https://github.com/egonozer/in_silico_pcr) and save it into the AmpliFuse folder. 
 ```bash
 git clone https://github.com/egonozer/in_silico_pcr.git
+
 mv in_silico_pcr/in_silico_pCR.pl AmpliFuse/in_silico_pCR.pl
+
 chmod +x AmpliFuse/in_silico_pCR.pl
 ```
 5. Make AmpliFuse available on your PATH
