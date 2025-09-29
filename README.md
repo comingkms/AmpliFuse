@@ -11,134 +11,100 @@ AmpliFuse is a Python script that facilitates  the generation of Illumina amplio
 + [Reference](#reference)  
 
 
-## System requirements
+## Requirements
 
-A was developed and tested in Ubuntu 22.04 under Python v3.10. It requires the installation and utilization of specific tools.
+AmpliFuse was developed and tested with Python 3.13.7 on Ubuntu 22.04.5 LTS. It requires the installation and utilization of specific tools.
 + Tool or pipleine:
-+ [emu](https://github.com/treangenlab/emu)<sup>1</sup>
-+ [fastp](https://github.com/OpenGene/fastp)<sup>2</sup>
-+ [chopper](https://github.com/wdecoster/chopper)<sup>3</sup>
-+ [resistomeanalyzer](https://github.com/cdeanj/resistomeanalyzer)
-+ [Porechop](https://github.com/rrwick/Porechop)
++ [in_silico_PCR.pl](https://github.com/egonozer/in_silico_pcr)<sup>1</sup>
++ [InSilicoSeq](https://github.com/HadrienG/InSilicoSeq)<sup>2</sup>
 
-+ Python library:
-  [glob](https://docs.python.org/3/library/glob.html)
-  [shutil](https://docs.python.org/3/library/shutil.html)
-  [argpare](https://docs.python.org/3/library/argparse.html)
-  [panadas](https://pandas.pydata.org/)
-  [numpy](https://numpy.org/)
-  [scipy](https://pypi.org/project/scipy/)
-  [termcolor](https://github.com/termcolor/termcolor)
-  [tqdm](https://tqdm.github.io/)
-  etc
-+ Database:
-  1. micobiome database, which is [emu database](https://github.com/treangenlab/emu/tree/master/emu_database), can be found in the [Emu github](https://github.com/treangenlab/emu). 
-  2. AMR database, which is a hand-curated database based on [MEGARes V3.0 database](https://www.meglab.org/megares/)<sup>4</sup> and [Illumina AMR research panel documentation](https://www.illumina.com/products/by-brand/ampliseq/community-panels/antimicrobial-resistance.html#tabs-5bcafff4ef-item-28eba04f16-documentation), can be found in the 'AMR_database' sub-directory, respectively.
-  
-
++ Python standard library plus:
++  [numpy](https://numpy.org/)
++  [biopython](https://biopython.org/)
+    
 ## Installation
 
-The easiest and most convenient way to install MAMR dependencies is by using conda in an isolated environment, such as `microbotAMR`. This method ensures a smooth and hassle-free installation process.
+The easiest and most convenient way to install AmpliFuse dependencies is by using conda in an isolated environment. This method ensures a smooth and hassle-free installation process.
 ```bash
-git clone https://github.com/comingkms/MicrobiotAMR.git
-cd MicrobiotAMR
-conda env create -n microbiotAMR --file environment.yml
-```
-The whole installation process should take about 5-10 minutes.
-
-To ensure the availability of the `MAMR` command, it is essential to add the absolute path of MAMR's directory to your PATH environment variable. This can be done by adding the following line to your `~/.bashrc` file:
+git clone https://github.com/comingkms/AmpliFuse.git
+cd AmpliFuse
+conda env create -n AmpliFuse
 
 ```
-export PATH=/absolute/path/to/MAMR:${PATH}
+Download [in_silico_PCR.pl](https://github.com/egonozer/in_silico_pcr)<sup>1</sup> and save it into the AmpliFuse folder. 
+
+To ensure the availability of the `AmpliFuse` command, it is essential to add the absolute path of AmpliFuse's directory to your PATH environment variable. This can be done by adding the following line to your `~/.bashrc` file:
+
+```
+export PATH=/absolute/path/to/AmpliFuse:${PATH}
 ```
 
 ## Usage and command line options
 
-To confirm the proper installation of MAMR, you can test a small dataset located in the `example` subdirectory.
 
-Here are some guidelines for the file names of the raw read files:
-1. For paired-end reads, the format of the input files' name should be: {sample_name}_Sxx_Lxxx_R1/R2_001.fastq.gz
-2. For ONT reads, the format of the input file's name should be: {sample_name}.fastq.gz
-3. For module 3(COR),  please ensure that the sample name matches the ones used for AMR and 16s rRNA gene amplicon sequencing.
-
-Activate MAMR conda environment:
+Activate AmpliFuse conda environment:
 ```
-conda activate microbotAMR
+conda activate AmpliFuse
 ```
 
-Running microbotAMR:
+Running AmpliFuse:
 ```
-$MAMR -h
-usage: MAMR [-h] [-v] {AMR,BAC,COR} ...
+$AmpliFuse -h
+usage: AmpliFuse --input FASTA --outdir DIR --pcr-primers-file FILE --n-reads N --model MODEL --cpu N [other options]
 
-Integrated microbiome and reistome analysis pipeline
-
-positional arguments:
-  {AMR,BAC,COR}  sub-commands
-    AMR          Perform Illumina AMR research panel analysis
-    BAC          Perform 16s rRNA gene amplicon sequencing analysis
-    COR          Perform correlation analysis
-
-options:
-  -h, --help     show this help message and exit
-  -v, --version  show program's version number and exit
-```
-
-Module 1: Analysis of  Illumina AMR reseach panel(AMR)
-
-```
-$MAMR AMR -h
-usage: MAMR AMR [-h] -amr_db AMR_DATABASE -a ANNO_FILE -amr_q AMR_QUERY_FILES -amr_o AMR_OUTPUT [-t THREADS]
+Amplicon chimera pipeline
 
 options:
   -h, --help            show this help message and exit
-  -amr_db AMR_DATABASE, --AMR_database AMR_DATABASE
-                        Path to AMR gene database
-  -a ANNO_FILE, --anno_file ANNO_FILE
-                        Annotation file for AMR database
-  -amr_q AMR_QUERY_FILES, --AMR_query_files AMR_QUERY_FILES
-                        Directory containing AMR query files
-  -amr_o AMR_OUTPUT, --AMR_output AMR_OUTPUT
-                        Output directory for AMR analysis results
-  -t THREADS, --threads THREADS
-                        Number of threads to use
+  --version             show program's version number and exit
 
-```
+Input & output:
+  --input INPUT         Input FASTA of templates (default: None)
+  --outdir OUTDIR       Output directory (creates pcr/, chimera/, simulated/) (default: None)
+  --pick-n PICK_N       Randomly pick N templates before PCR/chimera (0 or >=total = keep all) (default: 30)
+  --verbose, -v         Verbose logging (default: False)
 
-Module 2: Analysis of 16s rRNA gene amplicon sequencing(BAC)
+PCR:
+  --ispcr-path ISPCR_PATH
+                        Path to in_silico_PCR.pl (default: script folder) (default: None)
+  --pcr-primers-file PCR_PRIMERS_FILE
+                        Primers file for -p (fwd<TAB>rev<TAB>output_prefix) (default: None)
 
-```
-$MAMR BAC -h
-usage: MAMR BAC [-h] -emu_db EMU_DATABASE -emu_q EMU_QUERY_FILES -qt {PE,ONT} -emu_o EMU_OUTPUT [-t THREADS]
+Chimera generation:
+  --rate RATE           Chimera rate (proportion of PCR amplicons) (default: 0.05)
+  --min-segment MIN_SEGMENT
+                        Minimum segment length as a FRACTION of amplicon length (0–1). Default=0.1 (default: 0.1)
+  --breakpoint-model {exponential,uniform}
+                        Breakpoint distribution model (default: exponential)
+  --snap-kmer SNAP_KMER
+                        k-mer size for snapping (used if --snap-auto is OFF) (default: 11)
+  --snap-window SNAP_WINDOW
+                        Search window ±bp (used if --snap-auto is OFF) (default: 50)
+  --snap-auto           Automatically try multiple (k,window) combos to find the best snap; defaults: k∈{15,13,11,9,7,5}, window∈{20,40,60,80,100}. (default: False)
+  --snap-kmer-candidates SNAP_KMER_CANDIDATES
+                        Comma-separated k candidates used when --snap-auto is set (default: 15,13,11,9,7,5)
+  --snap-window-candidates SNAP_WINDOW_CANDIDATES
+                        Comma-separated window candidates used when --snap-auto is set (default: 20,40,60,80,100)
+  --model2              Use Simera-style Model 2 selection (probabilistic, fragment-driven). (default: False)
+  --phi PHI             Per-base extension failure probability φ for fragment formation (Model 2). (default: 0.01)
+  --cycles CYCLES       Number of PCR cycles influencing fragment formation (Model 2). (default: 30)
+  --mh-beta MH_BETA     Strength of microhomology preference; larger favors longer k (Model 2). (default: 0.25)
+  --mh-k0 MH_K0         Neutral microhomology length k0 in exp[β·(k−k0)] (Model 2). (default: 7)
+  --simera-rate         Derive effective chimera rate from (cycles, φ) like Simera; overrides --rate. (default: False)
+  --simera-rate-scale SIMERA_RATE_SCALE
+                        Scale factor applied to fragment probability to get effective rate. (default: 0.5)
+  --simera-rate-cap SIMERA_RATE_CAP
+                        Upper cap on effective rate (safety). (default: 0.6)
+  --simera-calibrate    Auto-calibrate simera-rate scale to hit --target-rate (overrides --simera-rate-scale). (default: False)
+  --target-rate TARGET_RATE
+                        Desired effective chimera fraction when using --simera-rate (default 0.2). (default: 0.2)
 
-options:
-  -h, --help            show this help message and exit
-  -emu_db EMU_DATABASE, --EMU_database EMU_DATABASE
-                        Path to EMU database
-  -bac_q BAC_QUERY_FILES, --BAC_query_files BAC_QUERY_FILES
-                        Directory containing EMU query files
-  -qt {PE,ONT}, --query_type {PE,ONT}
-                        Type of query (PE or ONT)
-  -bac_o BAC_OUTPUT, --BAC_output BAC_OUTPUT
-                        Output directory for EMU analysis results
-  -t THREADS, --threads THREADS
-                        Number of threads to use
-
-```
-Module 3: correlation analysis(COR)
-
-```
-$MAMR COR -h
-usage: MAMR COR [-h] -cor_amr COR_INTPUT_AMR -cor_emu COR_INTPUT_EMU -cor_o COR_OUTPUT
-
-options:
-  -h, --help            show this help message and exit
-  -cor_amr COR_INTPUT_AMR, --Cor_intput_AMR COR_INTPUT_AMR
-                        Input directory containing AMR analysis combined results
-  -cor_bac COR_INTPUT_BAC, --Cor_intput_BAC COR_INTPUT_BAC
-                        Input directory containing EMU analysis combined results
-  -cor_o COR_OUTPUT, --Cor_output COR_OUTPUT
-                        Output directory for correlation analysis results
+Simulator (InSilicoSeq):
+  --n-reads N_READS     (--n_reads) Total reads to simulate (default: None)
+  --model MODEL         (--model) Sequencer model (e.g., nextseq, miseq) (default: nextseq)
+  --cpu CPU             (--cpus) CPU threads for ISS (default: 4)
+  --abundance, -a {uniform,halfnormal,exponential,lognormal,zero-inflated-lognormal}
+                        (--abundance) Abundance distribution model (default: lognormal)
 
 ```
 
