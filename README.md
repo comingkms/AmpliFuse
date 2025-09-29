@@ -14,7 +14,7 @@ AmpliFuse is a Python script for simulating amplicons and PCR chimeras, then gen
 ## Requirements
 
 AmpliFuse was developed and tested with Python 3.13.7 on Ubuntu 22.04.5 LTS. It requires the installation and utilization of specific tools.
-+External tools:
++ External tools:
    + [in_silico_PCR.pl](https://github.com/egonozer/in_silico_pcr)
    + [InSilicoSeq](https://github.com/HadrienG/InSilicoSeq)
 + Python standard library plus:
