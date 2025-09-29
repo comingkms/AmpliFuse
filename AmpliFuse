@@ -1,0 +1,737 @@
+#!/usr/bin/env python3
+
+
+__version__ = "0.5.0"
+
+import argparse
+import logging
+import os
+import sys
+import gzip
+import numpy as np
+import subprocess
+import tempfile
+import shutil
+import csv
+import random
+from argparse import ArgumentDefaultsHelpFormatter
+from dataclasses import dataclass, asdict
+from typing import List, Tuple, Dict, Optional
+from bisect import bisect_left
+from Bio import SeqIO
+from Bio.Seq import Seq
+from Bio.SeqRecord import SeqRecord
+
+
+
+# Data structures
+
+@dataclass
+class ChimeraMeta:
+    chimera_id: str
+    chimera_type: str
+    parents: str
+    segment_bounds: str
+    breakpoints: str
+    child_len: int
+
+
+#input and output
+
+def _open_maybe_gzip_write(path: str):
+    return gzip.open(path, 'wt') if path.endswith(('.gz', '.gzip')) else open(path, 'w')
+
+def write_fasta(records: List[SeqRecord], path: str):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with _open_maybe_gzip_write(path) as fh:
+        SeqIO.write(records, fh, "fasta")
+
+def write_meta_tsv(path: str, metas: List[ChimeraMeta]) -> None:
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    fieldnames = list(ChimeraMeta.__annotations__.keys())
+    with open(path, 'w', newline='') as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames, delimiter='\t')
+        writer.writeheader()
+        for m in metas:
+            writer.writerow(asdict(m))
+
+
+# PCR
+
+def _resolve_ispcr_path(cli_path: Optional[str]) -> str:
+    if cli_path:
+        return cli_path
+    # default to script folder
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(script_dir, "in_silico_PCR.pl")
+
+def run_insilico_pcr(
+    ispcr_path: str,
+    templates_fa: str,
+    primers_file: str,
+    out_fa: str,
+    out_summary: str,
+    workdir: Optional[str] = None,
+) -> None:
+
+    ispcr_path = os.path.abspath(ispcr_path)
+    templates_fa = os.path.abspath(templates_fa)
+    primers_file = os.path.abspath(primers_file)
+    out_fa = os.path.abspath(out_fa)
+    out_summary = os.path.abspath(out_summary)
+
+    if not os.path.exists(ispcr_path):
+        raise FileNotFoundError(f"in_silico_PCR.pl not found: {ispcr_path}")
+    if not os.path.exists(primers_file):
+        raise FileNotFoundError(f"Primers file not found: {primers_file}")
+    if not os.path.exists(templates_fa):
+        raise FileNotFoundError(f"Template FASTA not found: {templates_fa}")
+
+    cmd = [
+        "perl", ispcr_path,
+        "-s", templates_fa,
+        "-p", primers_file,
+        "-m", "-i", "-r",
+        "-f", out_fa
+    ]
+    run_cwd = workdir or os.getcwd()
+    logging.info("Running in_silico_PCR.pl: %s (cwd=%s)", " ".join(cmd), run_cwd)
+
+    os.makedirs(os.path.dirname(out_fa), exist_ok=True)
+    with open(out_summary, "w") as fh:
+        proc = subprocess.run(cmd, cwd=run_cwd, stdout=fh, stderr=subprocess.PIPE, text=True)
+
+    if proc.returncode != 0:
+        raise RuntimeError(f"in_silico_PCR.pl failed:\nSTDERR:\n{proc.stderr}")
+
+    if not os.path.exists(out_fa) or os.path.getsize(out_fa) == 0:
+        raise RuntimeError("in_silico_PCR.pl produced no amplicons FASTA.")
+
+
+# Chimera
+
+class ChimeraGeneratorLite:
+
+    def __init__(self, min_segment_frac: float, snap_kmer: int, snap_window: int,
+                 snap_auto: bool = False,
+                 k_candidates: Optional[List[int]] = None,
+                 w_candidates: Optional[List[int]] = None):
+        # fraction (0..1) of sequence length
+        self.min_segment_frac = max(0.0, float(min_segment_frac))
+        self.k = int(snap_kmer)
+        self.w = max(1, int(snap_window))
+        self.snap_auto = bool(snap_auto)
+        # Prefer larger k first (more homology)
+        self.k_candidates = k_candidates if k_candidates else [15, 13, 11, 9, 7, 5]
+        self.w_candidates = w_candidates if w_candidates else [20, 40, 60, 80, 100]
+        self._kmer_snap_cache: Dict[Tuple[str, str, int], List[int]] = {}
+        # stats
+        self.stats_snapped = 0
+        self.stats_unsnapped = 0
+
+    @staticmethod
+    def _min_overlap_len(seqs: List[str]) -> int:
+        return min(len(s) for s in seqs)
+
+    def _calc_min_segment(self, seq_length: int) -> int:
+        return max(1, int(round(seq_length * self.min_segment_frac)))
+
+    def _draw_spaced_breakpoints(self, seq_length: int, n_breakpoints: int, model: str, min_seg: int) -> List[int]:
+        if n_breakpoints <= 0:
+            return []
+        lo = min_seg
+        hi = seq_length - min_seg
+        if hi - lo <= 0:
+            if n_breakpoints == 1:
+                return [seq_length // 2]
+            raise ValueError("Sequence too short for requested breakpoints.")
+        # simple rejection sampling
+        for _ in range(5000):
+            if model == 'exponential':
+                lam = 2.0 / seq_length
+                x = np.random.exponential(1 / lam)
+                pos = seq_length - min(x, seq_length - lo)
+                pos = int(max(lo, min(pos, hi)))
+                candidates = [pos]
+                while len(candidates) < n_breakpoints:
+                    p = random.randint(lo, hi)
+                    tmp = sorted(candidates + [p])
+                    positions = [0] + tmp + [seq_length]
+                    if all((positions[i+1] - positions[i]) >= min_seg
+                           for i in range(len(positions)-1)):
+                        candidates = tmp
+                return sorted(set(candidates))[:n_breakpoints]
+            else:
+                candidates = set()
+                while len(candidates) < n_breakpoints:
+                    p = random.randint(lo, hi)
+                    cand = sorted(list(candidates | {p}))
+                    positions = [0] + cand + [seq_length]
+                    if all((positions[i+1] - positions[i]) >= min_seg
+                           for i in range(len(positions)-1)):
+                        candidates.add(p)
+                return sorted(candidates)
+        raise RuntimeError("Failed to draw spaced breakpoints")
+
+    def _build_kmer_snap_positions(self, A: SeqRecord, B: SeqRecord, k: int) -> List[int]:
+        key = (A.id, B.id, k)
+        if key in self._kmer_snap_cache:
+            return self._kmer_snap_cache[key]
+        L, R = str(A.seq), str(B.seq)
+        n = min(len(L), len(R))
+        if n < k:
+            self._kmer_snap_cache[key] = []
+            return []
+        pos: List[int] = []
+        for t in range(k, n + 1):
+            if L[t-k:t] == R[t-k:t]:
+                pos.append(t)
+        for t in range(0, n - k + 1):
+            if L[t:t+k] == R[t:t+k]:
+                pos.append(t)
+        pos = sorted(set(pos))
+        self._kmer_snap_cache[key] = pos
+        return pos
+
+    def _snap_once(self, A: SeqRecord, B: SeqRecord, bp: int, lo: int, hi: int, k: int, w: int) -> Optional[int]:
+
+        n = min(len(A.seq), len(B.seq))
+        lo = max(lo, 1, 0)
+        hi = min(hi, n - 1)
+        if bp < lo or bp > hi:
+            return None
+        start = max(lo, bp - w)
+        end   = min(hi, bp + w)
+        if start > end:
+            return None
+        positions = self._build_kmer_snap_positions(A, B, k)
+        if not positions:
+            return None
+        i = bisect_left(positions, bp)
+        best = None
+        for idx in (i, i-1, i+1):
+            if 0 <= idx < len(positions):
+                t = positions[idx]
+                if start <= t <= end:
+                    if best is None or abs(t - bp) < abs(best - bp):
+                        best = t
+        return best
+
+    def _snap_kmer(self, A: SeqRecord, B: SeqRecord, bp: int, min_seg: int, n: int) -> int:
+
+        lo = min_seg
+        hi = n - min_seg
+
+        # Manual mode
+        if not self.snap_auto:
+            snapped = self._snap_once(A, B, bp, lo, hi, self.k, self.w)
+            if snapped is None:
+                self.stats_unsnapped += 1
+                return bp
+            self.stats_snapped += 1
+            return snapped
+
+        # Auto grid search
+        best_tuple = None  # (priority_k_index, |t-bp|, t, k, w)
+        for ki, k in enumerate(self.k_candidates):
+            positions = self._build_kmer_snap_positions(A, B, k)
+            if not positions:
+                continue
+            for w in self.w_candidates:
+                t = self._snap_once(A, B, bp, lo, hi, k, w)
+                if t is not None:
+                    cand = (ki, abs(t - bp), t, k, w)
+                    if (best_tuple is None) or (cand < best_tuple):
+                        best_tuple = cand
+        if best_tuple is None:
+            self.stats_unsnapped += 1
+            return bp
+        self.stats_snapped += 1
+        return best_tuple[2]  # t
+
+
+    def create_bimera(self, A: SeqRecord, B: SeqRecord, model: str) -> Tuple[SeqRecord, ChimeraMeta]:
+        sa, sb = str(A.seq), str(B.seq)
+        n = self._min_overlap_len([sa, sb])
+        min_seg = self._calc_min_segment(n)
+        bp0 = self._draw_spaced_breakpoints(n, 1, model, min_seg)[0]
+        bp = self._snap_kmer(A, B, bp0, min_seg, n)
+        seq = sa[:bp] + sb[bp:n]
+        cid = f"chimera_bimera_{A.id}_{B.id}_{bp}"
+        rec = SeqRecord(Seq(seq), id=cid, description=f"Bimera: {A.id}[0:{bp}] + {B.id}[{bp}:{n}]")
+        meta = ChimeraMeta(
+            chimera_id=cid, chimera_type="bimera",
+            parents=f"{A.id},{B.id}",
+            segment_bounds=f"{A.id}[0:{bp}]|{B.id}[{bp}:{n}]",
+            breakpoints=str([bp]), child_len=len(seq)
+        )
+        return rec, meta
+
+    def create_trimera(self, A: SeqRecord, B: SeqRecord, C: SeqRecord, model: str) -> Tuple[SeqRecord, ChimeraMeta]:
+        sa, sb, sc = str(A.seq), str(B.seq), str(C.seq)
+        n = self._min_overlap_len([sa, sb, sc])
+        min_seg = self._calc_min_segment(n)
+        bp1, bp2 = sorted(self._draw_spaced_breakpoints(n, 2, model, min_seg))
+        s1 = self._snap_kmer(A, B, bp1, min_seg, n)
+        s2 = self._snap_kmer(B, C, bp2, min_seg, n)
+        positions = [0, s1, s2, n]
+        ok = all((positions[i+1] - positions[i]) >= min_seg for i in range(3)) and s1 < s2
+        if not ok:
+            # keep original unsnapped if snapping broke spacing
+            s1, s2 = bp1, bp2
+        seq = sa[:s1] + sb[s1:s2] + sc[s2:n]
+        cid = f"chimera_trimera_{A.id}_{B.id}_{C.id}_{s1}_{s2}"
+        rec = SeqRecord(Seq(seq), id=cid,
+                        description=f"Trimera: {A.id}[0:{s1}] + {B.id}[{s1}:{s2}] + {C.id}[{s2}:{n}]")
+        meta = ChimeraMeta(
+            chimera_id=cid, chimera_type="trimera",
+            parents=f"{A.id},{B.id},{C.id}",
+            segment_bounds=f"{A.id}[0:{s1}]|{B.id}[{s1}:{s2}]|{C.id}[{s2}:{n}]",
+            breakpoints=str([s1, s2]), child_len=len(seq)
+        )
+        return rec, meta
+
+    def create_multimera(self, parents: List[SeqRecord], n_segments: int, model: str) -> Tuple[SeqRecord, ChimeraMeta]:
+        if len(parents) < n_segments:
+            while len(parents) < n_segments:
+                parents.append(random.choice(parents))
+        seqs = [str(p.seq) for p in parents[:n_segments]]
+        n = self._min_overlap_len(seqs)
+        min_seg = self._calc_min_segment(n)
+        bps = self._draw_spaced_breakpoints(n, n_segments - 1, model, min_seg)
+
+        lo = min_seg; hi = n - min_seg
+        snapped = bps[:]
+        for i in range(len(bps)):
+            left = parents[i]; right = parents[i+1]
+            left_bound = (snapped[i-1] + min_seg) if i > 0 else lo
+            right_bound = (snapped[i+1] - min_seg) if i < len(bps)-1 else hi
+            if left_bound <= right_bound:
+                t = self._snap_kmer(left, right, snapped[i], min_seg, n)
+                snapped[i] = t
+        pos_chk = [0] + snapped + [n]
+        if all((pos_chk[i+1] - pos_chk[i]) >= min_seg for i in range(len(pos_chk)-1)):
+            bps = snapped
+
+        pieces = []
+        seg_info = []
+        positions = [0] + bps + [n]
+        for i in range(n_segments):
+            s, e = positions[i], positions[i+1]
+            pieces.append(seqs[i][s:e])
+            seg_info.append(f"{parents[i].id}[{s}:{e}]")
+        seq = "".join(pieces)
+        cid = f"chimera_multimera_{'_'.join([p.id for p in parents[:n_segments]])}"
+        rec = SeqRecord(Seq(seq), id=cid, description=f"Multimera: {' + '.join(seg_info)}")
+        meta = ChimeraMeta(
+            chimera_id=cid, chimera_type="multimera",
+            parents=",".join([p.id for p in parents[:n_segments]]),
+            segment_bounds="|".join(seg_info),
+            breakpoints=str(bps), child_len=len(seq)
+        )
+        return rec, meta
+
+
+# adapt Simera 2 model
+
+#   φ: per-base extension failure probability (fragment formation).
+#   - cycles: number of PCR cycles.
+#   - weights use fragment formation probability and microhomology length.
+
+class Model2Selector:
+
+    def __init__(self, phi: float, cycles: int, beta: float, k0: int,
+                 k_candidates: List[int], w_candidates: List[int], min_segment_frac: float):
+        self.phi = max(0.0, float(phi))
+        self.cycles = max(1, int(cycles))
+        self.beta = float(beta)
+        self.k0 = int(k0)
+        self.k_candidates = k_candidates
+        self.w_candidates = w_candidates
+        self.min_segment_frac = float(min_segment_frac)
+
+    @staticmethod
+    def _min_overlap_len(seqs: List[str]) -> int:
+        return min(len(s) for s in seqs)
+
+    def _calc_min_segment(self, n: int) -> int:
+        return max(1, int(round(n * self.min_segment_frac)))
+
+    def _candidate_snaps(self, gen: ChimeraGeneratorLite, A: SeqRecord, B: SeqRecord) -> List[Tuple[int,int]]:
+
+        L, R = str(A.seq), str(B.seq)
+        n = min(len(L), len(R))
+        min_seg = self._calc_min_segment(n)
+        lo, hi = min_seg, n - min_seg
+        cands: List[Tuple[int,int]] = []
+
+        for k in self.k_candidates:
+            pos = gen._build_kmer_snap_positions(A, B, k)
+            if not pos:
+                continue
+            for t in pos:
+                if lo <= t <= hi:
+                    cands.append((t, k))
+        # Deduplicate by (t,k)
+        cands = sorted(set(cands))
+        return cands
+
+    def _fragment_prob(self, n: int) -> float:
+
+        return 1.0 - (1.0 - self.phi) ** (n * self.cycles)
+
+    def _mh_weight(self, klen: int) -> float:
+        # bias toward longer microhomology; exp[β·(k−k0)] with a small floor
+        import math
+        return max(1e-6, math.exp(self.beta * (klen - self.k0)))
+
+    def build_pool(self, gen: ChimeraGeneratorLite, parents: List[SeqRecord]) -> List[Tuple[SeqRecord, SeqRecord, int, int, float]]:
+
+        pool = []
+        for i in range(len(parents)):
+            for j in range(len(parents)):
+                if i == j:
+                    continue
+                A, B = parents[i], parents[j]
+                L, R = str(A.seq), str(B.seq)
+                n = min(len(L), len(R))
+                # all candidate MH breakpoints within min-segment bounds
+                cands = self._candidate_snaps(gen, A, B)
+                if not cands:
+                    # allow one low-weight unsnapped mid-point if no MH at all
+                    min_seg = self._calc_min_segment(n)
+                    bp_mid = n // 2
+                    if min_seg <= bp_mid <= n - min_seg:
+                        frag_p = self._fragment_prob(n)
+                        w = frag_p * 1e-3
+                        pool.append((A, B, bp_mid, 0, w))
+                    continue
+
+                frag_p = self._fragment_prob(n)
+                for (bp, klen) in cands:
+                    w = frag_p * self._mh_weight(klen)
+                    pool.append((A, B, bp, klen, w))
+        return pool
+
+    def select(self, pool: List[Tuple[SeqRecord, SeqRecord, int, int, float]], m: int) -> List[Tuple[SeqRecord, SeqRecord, int]]:
+
+        if not pool or m <= 0:
+            return []
+        weights = np.array([w for (_,_,_,_,w) in pool], dtype=float)
+        s = weights.sum()
+        if not np.isfinite(s) or s <= 0:
+            idx = np.random.choice(len(pool), size=m, replace=True)
+            return [(pool[t][0], pool[t][1], pool[t][2]) for t in idx]
+        probs = weights / s
+        idx = np.random.choice(len(pool), size=m, replace=True, p=probs)
+        out = [(pool[t][0], pool[t][1], pool[t][2]) for t in idx]
+        return out
+
+
+#  main
+
+def main():
+    p = argparse.ArgumentParser(
+        description="Amplicon chimera pipeline",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        usage="%(prog)s --input FASTA --outdir DIR --pcr-primers-file FILE --n-reads N --model MODEL --cpu N [other options]"
+    )
+    p.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
+
+    # input and output
+    g_io = p.add_argument_group("Input & output")
+    g_io.add_argument("--input", required=True, help="Input FASTA of templates", default=argparse.SUPPRESS)
+    g_io.add_argument("--outdir", required=True, help="Output directory (creates pcr/, chimera/, simulated/)", default=argparse.SUPPRESS)
+    g_io.add_argument("--pick-n", type=int, default=30,
+                      help="Randomly pick N templates before PCR/chimera (0 or >=total = keep all)")
+    g_io.add_argument("--verbose", "-v", action="store_true", help="Verbose logging")
+
+    # PCR
+    g_pcr = p.add_argument_group("PCR")
+    g_pcr.add_argument("--ispcr-path", help="Path to in_silico_PCR.pl (default: script folder)")
+    g_pcr.add_argument("--pcr-primers-file", required=True,
+                       help="Primers file for -p (fwd<TAB>rev<TAB>output_prefix)", default=argparse.SUPPRESS)
+
+    # Chimera
+    g_chi = p.add_argument_group("Chimera generation")
+    g_chi.add_argument("--rate", type=float, default=0.05, help="Chimera rate (proportion of PCR amplicons)")
+    g_chi.add_argument(
+        "--min-segment", type=float, default=0.1,
+        help="Minimum segment length as a FRACTION of amplicon length (0–1). Default=0.1"
+    )
+    g_chi.add_argument("--breakpoint-model", choices=["exponential", "uniform"], default="exponential",
+                       help="Breakpoint distribution model")
+    g_chi.add_argument("--snap-kmer", type=int, default=11, help="k-mer size for snapping (used if --snap-auto is OFF)")
+    g_chi.add_argument("--snap-window", type=int, default=50, help="Search window ±bp (used if --snap-auto is OFF)")
+    g_chi.add_argument("--snap-auto", action="store_true",
+                       help="Automatically try multiple (k,window) combos to find the best snap; "
+                            "defaults: k∈{15,13,11,9,7,5}, window∈{20,40,60,80,100}.")
+    g_chi.add_argument("--snap-kmer-candidates", default="15,13,11,9,7,5",
+                       help="Comma-separated k candidates used when --snap-auto is set")
+    g_chi.add_argument("--snap-window-candidates", default="20,40,60,80,100",
+                       help="Comma-separated window candidates used when --snap-auto is set")
+
+    # Simera 2
+    g_chi.add_argument("--model2", action="store_true",
+                       help="Use Simera-style Model 2 selection (probabilistic, fragment-driven).")
+    g_chi.add_argument("--phi", type=float, default=0.01,
+                       help="Per-base extension failure probability φ for fragment formation (Model 2).")
+    g_chi.add_argument("--cycles", type=int, default=30,
+                       help="Number of PCR cycles influencing fragment formation (Model 2).")
+    g_chi.add_argument("--mh-beta", type=float, default=0.25,
+                       help="Strength of microhomology preference; larger favors longer k (Model 2).")
+    g_chi.add_argument("--mh-k0", type=int, default=7,
+                       help="Neutral microhomology length k0 in exp[β·(k−k0)] (Model 2).")
+
+    # Simera-compatible automatic rate
+    g_chi.add_argument("--simera-rate", action="store_true",
+                       help="Derive effective chimera rate from (cycles, φ) like Simera; overrides --rate.")
+    g_chi.add_argument("--simera-rate-scale", type=float, default=0.5,
+                       help="Scale factor applied to fragment probability to get effective rate.")
+    g_chi.add_argument("--simera-rate-cap", type=float, default=0.6,
+                       help="Upper cap on effective rate (safety).")
+    g_chi.add_argument("--simera-calibrate", action="store_true",
+                       help="Auto-calibrate simera-rate scale to hit --target-rate (overrides --simera-rate-scale).")
+    g_chi.add_argument("--target-rate", type=float, default=0.2,
+                       help="Desired effective chimera fraction when using --simera-rate (default 0.2).")
+
+    # SR-Simulator (ISS)
+    g_sim = p.add_argument_group("Simulator (InSilicoSeq)")
+    g_sim.add_argument("--n-reads", type=int, required=True, default=10000, help="(--n_reads) Total reads to simulate")
+    g_sim.add_argument("--model", default="nextseq", help="(--model) Sequencer model (e.g., nextseq, miseq)")
+    g_sim.add_argument("--cpu", type=int, default=4, help="(--cpus) CPU threads for ISS")
+    g_sim.add_argument(
+        "--abundance", "-a",
+        default="lognormal",
+        choices=["uniform", "halfnormal", "exponential", "lognormal", "zero-inflated-lognormal"],
+        help="(--abundance) Abundance distribution model"
+    )
+
+    args = p.parse_args()
+
+    log_level = logging.INFO if args.verbose else logging.WARNING
+    logging.basicConfig(level=log_level, format='%(asctime)s - %(levelname)s - %(message)s')
+
+    # Prepare output dirs
+    pcr_dir = os.path.join(args.outdir, "pcr")
+    chim_dir = os.path.join(args.outdir, "chimera")
+    sim_dir = os.path.join(args.outdir, "simulated")
+    os.makedirs(pcr_dir, exist_ok=True)
+    os.makedirs(chim_dir, exist_ok=True)
+    os.makedirs(sim_dir, exist_ok=True)
+
+    # Load templates
+    templates = list(SeqIO.parse(args.input, "fasta"))
+    if len(templates) < 2:
+        logging.error("Need at least 2 input sequences.")
+        sys.exit(1)
+
+    # Pick N
+    if args.pick_n > 0 and len(templates) > args.pick_n:
+        idx = np.random.choice(len(templates), size=args.pick_n, replace=False)
+        templates = [templates[i] for i in idx]
+        logging.info(f"Selected {len(templates)} templates via --pick-n.")
+    else:
+        logging.info("Using all input templates.")
+
+    tmpdir = tempfile.mkdtemp(prefix="amplifuse_tmp_")
+    try:
+
+        ispcr_exec = _resolve_ispcr_path(args.ispcr_path)
+        sel_path = os.path.join(tmpdir, "selected_templates.fasta")
+        write_fasta(templates, sel_path)
+
+        amplicons_fa = os.path.abspath(os.path.join(pcr_dir, "amplicons.fasta"))
+        amplicons_summary = os.path.abspath(os.path.join(pcr_dir, "results.txt"))
+
+        run_insilico_pcr(
+            ispcr_path=ispcr_exec,
+            templates_fa=sel_path,
+            primers_file=args.pcr_primers_file,
+            out_fa=amplicons_fa,
+            out_summary=amplicons_summary,
+            workdir=tmpdir,
+        )
+
+        parents = list(SeqIO.parse(amplicons_fa, "fasta"))
+        if not parents:
+            logging.error("in_silico_PCR.pl produced zero amplicons.")
+            sys.exit(1)
+        logging.info(f"PCR amplicons: {len(parents)}")
+
+        # Sanity vs min-segment (fraction) on shortest amplicon
+        shortest = min(len(str(s.seq)) for s in parents)
+        min_seg_short = max(1, int(round(shortest * args.min_segment)))
+        if shortest < 2 * min_seg_short:
+            logging.warning(f"Shortest amplicon length {shortest} < 2*min-segment ({2*min_seg_short}).")
+
+        # ---------- Simera-compatible effective rate (optional) ----------
+        if args.simera_rate:
+            lens = np.array([len(str(s.seq)) for s in parents], dtype=float)
+            phi = max(0.0, float(args.phi))
+            cycles = max(1, int(args.cycles))
+            # mean fragment probability across amplicons
+            p_frag = 1.0 - (1.0 - phi) ** (lens * cycles)
+            p_mean = float(np.mean(p_frag))
+
+            if args.simera_calibrate:
+                # Solve for scale so that rate_eff ≈ target_rate (then apply cap)
+                if p_mean > 1e-12:
+                    scale_cal = max(0.0, args.target_rate / p_mean)
+                    rate_eff = min(max(0.0, scale_cal * p_mean), args.simera_rate_cap)
+                    logging.info(
+                        f"Simera-calibration: p_mean={p_mean:.6f}, target={args.target_rate:.6f} "
+                        f"→ scale_cal={scale_cal:.6f} → rate_eff={rate_eff:.6f} (cap={args.simera_rate_cap})"
+                    )
+                else:
+                    # p_mean ~ 0: fall back gracefully
+                    rate_eff = max(0.0, float(args.rate))
+                    logging.warning(
+                        "Simera-calibration skipped: mean fragment probability is ~0; "
+                        f"falling back to --rate ({rate_eff})."
+                    )
+            else:
+                rate_eff = min(
+                    max(0.0, args.simera_rate_scale * p_mean),
+                    args.simera_rate_cap
+                )
+                logging.info(
+                    f"Simera-compatible rate: mean_frag_p={p_mean:.6f} "
+                    f"→ rate_eff={rate_eff:.6f} (scale={args.simera_rate_scale}, cap={args.simera_rate_cap})"
+                )
+        else:
+            rate_eff = max(0.0, float(args.rate))
+
+        # Determine total chimeras from rate_eff
+        total_chimeras = max(0, int(round(len(parents) * rate_eff)))
+        logging.info(f"Generating {total_chimeras} chimeras (effective rate={rate_eff:.4f}).")
+
+        # Chimera generation
+        k_cands = [int(x) for x in args.snap_kmer_candidates.split(",")] if args.snap_auto else [args.snap_kmer]
+        w_cands = [int(x) for x in args.snap_window_candidates.split(",")] if args.snap_auto else [args.snap_window]
+        # Pick a representative (k,w) for manual mode; auto mode uses candidate lists internally
+        gen = ChimeraGeneratorLite(args.min_segment,
+                                   k_cands[0],
+                                   w_cands[0],
+                                   snap_auto=args.snap_auto,
+                                   k_candidates=k_cands, w_candidates=w_cands)
+
+        chimeras: List[SeqRecord] = []
+        metas: List[ChimeraMeta] = []
+
+        if args.model2:
+            # Model-2: build candidate pool over all parent pairs and MH junctions; sample by weight
+            logging.info("Model 2 mode: building candidate microhomology pool...")
+            selector = Model2Selector(phi=args.phi, cycles=args.cycles,
+                                      beta=args.mh_beta, k0=args.mh_k0,
+                                      k_candidates=k_cands, w_candidates=w_cands,
+                                      min_segment_frac=args.min_segment)
+            pool = selector.build_pool(gen, parents)
+            if not pool:
+                logging.warning("Model 2 pool is empty; falling back to uniform random generation.")
+                picks = []
+            else:
+                picks = selector.select(pool, total_chimeras)
+
+            # Build bimeras at chosen junctions
+            for (A, B, bp) in picks:
+                sa, sb = str(A.seq), str(B.seq)
+                n = min(len(sa), len(sb))
+                rec_seq = sa[:bp] + sb[bp:n]
+                cid = f"chimera_bimera_{A.id}_{B.id}_{bp}"
+                rec = SeqRecord(Seq(rec_seq), id=cid,
+                                description=f"Bimera(Model2): {A.id}[0:{bp}] + {B.id}[{bp}:{n}]")
+                meta = ChimeraMeta(
+                    chimera_id=cid, chimera_type="bimera",
+                    parents=f"{A.id},{B.id}",
+                    segment_bounds=f"{A.id}[0:{bp}]|{B.id}[{bp}:{n}]",
+                    breakpoints=str([bp]), child_len=len(rec_seq)
+                )
+                chimeras.append(rec)
+                metas.append(meta)
+
+            # If shortfall (empty pool or not enough), top up with original generator
+            remaining = total_chimeras - len(chimeras)
+            if remaining > 0:
+                logging.info(f"Topping up {remaining} chimeras using original generator.")
+                for _ in range(remaining):
+                    # default to bimera for speed/consistency
+                    idx = np.random.choice(len(parents), size=2, replace=False)
+                    A, B = parents[idx[0]], parents[idx[1]]
+                    rec, meta = gen.create_bimera(A, B, args.breakpoint_model)
+                    chimeras.append(rec)
+                    metas.append(meta)
+
+        else:
+            # Original generator: mix of bi/tri/multi
+            p_bi, p_tri = 0.9, 0.1
+
+            def pick_parents(k: int) -> List[SeqRecord]:
+                if k <= len(parents):
+                    idx = np.random.choice(len(parents), size=k, replace=False)
+                    return [parents[i] for i in idx]
+                sel = parents[:]
+                while len(sel) < k:
+                    sel.append(random.choice(parents))
+                return sel
+
+            for _ in range(total_chimeras):
+                r = random.random()
+                if r < p_bi:
+                    A, B = pick_parents(2)
+                    rec, meta = gen.create_bimera(A, B, args.breakpoint_model)
+                elif r < p_bi + p_tri:
+                    A, B, C = pick_parents(3)
+                    rec, meta = gen.create_trimera(A, B, C, args.breakpoint_model)
+                else:
+                    segs = 4
+                    plist = pick_parents(segs)
+                    rec, meta = gen.create_multimera(plist, segs, args.breakpoint_model)
+                chimeras.append(rec)
+                metas.append(meta)
+
+        # Write chimera outputs
+        chimeras_fa = os.path.join(chim_dir, "chimeras.fasta")
+        write_fasta(chimeras, chimeras_fa)
+        logging.info(f"Wrote {len(chimeras)} chimeras to {chimeras_fa}")
+
+        combined_fa = os.path.join(chim_dir, "combined.fasta")
+        write_fasta(parents + chimeras, combined_fa)
+        logging.info(f"Wrote combined parents+chimeras to {combined_fa}")
+
+        meta_path = os.path.join(chim_dir, "chimera_meta.tsv")
+        write_meta_tsv(meta_path, metas)
+        logging.info(f"Wrote chimera provenance to {meta_path}")
+
+        # One-line snapping summary
+        snapped = gen.stats_snapped
+        unsnapped = gen.stats_unsnapped
+        total = max(1, snapped + unsnapped)
+        pct = 100.0 * snapped / total
+        if not args.model2:
+            logging.info(f"Snapping summary: snapped={snapped}, unsnapped={unsnapped} ({pct:.1f}% snapped)")
+
+        # InSilicoSeq
+        iss_prefix = os.path.join(sim_dir, "reads")
+        cmd = [
+            "iss", "generate",
+            "--genomes", combined_fa,
+            "--n_reads", str(args.n_reads),
+            "--compress",
+            "--sequence_type", "amplicon",
+            "--model", args.model,
+            "--output", iss_prefix,
+            "--cpus", str(args.cpu),
+            "--abundance", args.abundance,
+        ]
+        logging.info("Running InSilicoSeq: %s", " ".join(cmd))
+        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL,
+                   stderr=subprocess.DEVNULL)
+        logging.info("InSilicoSeq completed.")
+
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
+
+
+if __name__ == "__main__":
+    main()
