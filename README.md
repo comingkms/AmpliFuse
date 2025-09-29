@@ -110,8 +110,6 @@ Simulator (InSilicoSeq):
 ## Output files
 
 The output directory of Amplifuse has the following structure:
-
-Module 1: AMR 
 ```
 OUTPUT_DIR/
 ├── pcr/
