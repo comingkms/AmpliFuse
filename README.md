@@ -7,7 +7,6 @@ AmpliFuse is a Python script that facilitates  the generation of Illumina amplio
 + [Installation](#installation)
 + [Usage](#usage)
 + [Output files](#output-files)
-+ [Citation](#citation)   
 + [Reference](#reference)  
 
 
@@ -110,54 +109,29 @@ Simulator (InSilicoSeq):
 
 ## Output files
 
-The output directory of MAMR has the following structure:
+The output directory of Amplifuse has the following structure:
 
 Module 1: AMR 
 ```
 OUTPUT_DIR/
-├── Resistomes/
-    ├── AMR_combined.class.csv
-    ├── AMR_combined.gene.csv
-    ├── AMR_combined.class_rel_abundance.csv
-    ├── AMR_combined.gene_rel_abundance.csv
-    ├──{sample_1}_sam.class.tsv 
-    ├──{sample_1}_sam.gene.tsv
-    ├──{sample_1}_sam.group.tsv
-    ├──{sample_1}_sam.mechanism.tsv 
+├── pcr/
+    ├── amplicons.fasta     # from in_silico_PCR.pl -f
+    ├── results.txt         # stdout summary from in_silico_PCR.pl
+├── chimera/
+    ├── chimeras.fasta      # generated child sequences
+    ├── combined.fasta      # amplicons + chimeras
+    ├──chimera_meta.tsv     # summary of chimera
+├──simulated/
+    ├──reads_*              # InSilicoSeq output: compressed FASTQs
+    ├──reads_abundance.txt  # InSilicoSeq output: table
     ├──...
 ```
-MAMR combined outputs are stored in the `AMR_conbined.****.csv` files. 
 
-Module 2: BAC
 
-```
-OUTPUT_DIR/
-├── {sample_1}/
-├── {sample_2}/
-├── {sample_3}/
-├── ...
-├── combined/
-    ├── {sample_1}_rel-abundance.tsv 
-    ├── ...
-    ├── emu-combined-genus.tsv
-    ├── emu-combined-genus_counts.tsv
-    ├── emu-combined-species.tsv
-    └── emu-combined-species_counts.tsv
-```
-MAMR utilizes the Emu pipeline to analyze 16S rRNA sequencing data. For more information, please review the [Emu GitHub repository](https://github.com/treangenlab/emu) 
+## References
 
-Module 3: COR
 
-```
-OUTPUT_DIR/
-├── correlation_genus.csv
-├── correlation_species.csv
-├── ...
 
-```
-MAMR correlation results are saved in the `corelation_xxx.csv' files. The rest of the files in this output folder are copied from the output folders of modules 1 and 2.
-
-## Citation 
 
 
 
