@@ -2,7 +2,7 @@
 
 AmpliFuse is a Python script for simulating amplicons and PCR chimeras, then generating Illumina reads. It wraps three stages:
 1.  In silico PCR on a subset of template sequences<sup>1</sup>
-2.  Chimera simulation<sup>2,3</sup> 
+2.  Chimera simulation<sup>2,3,4</sup> 
 3.  Illumina read simulation<sup>4</sup>
 
 + [Requirements](#Requirements)
@@ -141,5 +141,9 @@ OUTPUT_DIR/
 1. https://github.com/egonozer/in_silico_pcr
 2. Edgar RC, Haas BJ, Clemente JC, Quince C, Knight R. 2011. UCHIME improves sensitivity and speed of chimera detection. Bioinformatics 27:2194-200.
 3. Nichols B, Quince C. 2016. Simera: Modelling the PCR Process to Simulate Realistic Chimera Formation. bioRxiv doi:10.1101/072447:072447.
-4. https://insilicoseq.readthedocs.io/en/latest/
+4. Angly FE, Willner D, Rohwer F, Hugenholtz P, Tyson GW. 2012. Grinder: a versatile amplicon and shotgun sequence simulator. Nucleic Acids Res 40:e94.
+5. https://insilicoseq.readthedocs.io/en/latest/
+6. https://github.com/zyxue/biogrinder
+7. https://github.com/philcharron-cfia/biogrinder
+8. https://github.com/bnichols1979/Simera
 
