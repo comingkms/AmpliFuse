@@ -14,8 +14,8 @@ AmpliFuse is a Python script that facilitates  the generation of Illumina amplio
 
 AmpliFuse was developed and tested with Python 3.13.7 on Ubuntu 22.04.5 LTS. It requires the installation and utilization of specific tools.
 + Tool or pipleine:
-+ [in_silico_PCR.pl](https://github.com/egonozer/in_silico_pcr)<sup>1</sup>
-+ [InSilicoSeq](https://github.com/HadrienG/InSilicoSeq)<sup>2</sup>
++ [in_silico_PCR.pl](https://github.com/egonozer/in_silico_pcr)
++ [InSilicoSeq](https://github.com/HadrienG/InSilicoSeq)
 
 + Python standard library plus:
 +  [numpy](https://numpy.org/)
@@ -127,12 +127,8 @@ OUTPUT_DIR/
     ├──...
 ```
 
-
-## References
-
-
-
-
-
-
 ## Reference
++ https://insilicoseq.readthedocs.io/en/latest/
++ https://github.com/egonozer/in_silico_pcr
++ 
+
