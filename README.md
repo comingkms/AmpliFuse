@@ -1,7 +1,7 @@
 # AmpliFuse
 
 AmpliFuse is a Python script for simulating amplicons and PCR chimeras, then generating Illumina reads. It wraps three stages:
-1.  In silico PCR on a subset of template sequences
+1.  In silico PCR using in_silico_PCR.pl on a subset of template sequences
 2.  Chimera simulation using either a Breakpoint & Template-Switching (BTS) model or Simera 2 model
 3.  Illumina read simulation with InSilicoSeq under the amplicon model
 
