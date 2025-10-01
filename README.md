@@ -48,8 +48,7 @@ chmod +x AmpliFuse/in_silico_pCR.pl
 5. Make AmpliFuse available on your PATH
    Add AmpliFuse’s directory to your PATH so the amplifuse (or AmpliFuse) command is found anywhere.
 ```
-echo 'export PATH="$HOME/path/to/AmpliFuse:$PATH"' >> ~/.bashrc
-source ~/.bashrc
+export PATH=/absolute/path/to/AmpliFuse:${PATH}
 ```
 
 ## Usage
