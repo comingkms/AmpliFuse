@@ -25,7 +25,7 @@ AmpliFuse was developed and tested with Python 3.12 on Ubuntu 22.04.5 LTS. It re
 
 1. Create a Conda environment
 ```bash
-conda env create -n AmpliFuse -y
+conda create -n AmpliFuse -y
 ```
 2. install Dependencies
 ```bash
