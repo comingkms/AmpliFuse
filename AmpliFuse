@@ -334,10 +334,6 @@ class ChimeraGeneratorLite:
 
 # adapt Simera 2 model
 
-#   φ: per-base extension failure probability (fragment formation).
-#   - cycles: number of PCR cycles.
-#   - weights use fragment formation probability and microhomology length.
-
 class Model2Selector:
 
     def __init__(self, phi: float, cycles: int, beta: float, k0: int,
@@ -381,7 +377,7 @@ class Model2Selector:
         return 1.0 - (1.0 - self.phi) ** (n * self.cycles)
 
     def _mh_weight(self, klen: int) -> float:
-        # bias toward longer microhomology; exp[β·(k−k0)] with a small floor
+        
         import math
         return max(1e-6, math.exp(self.beta * (klen - self.k0)))
 
@@ -398,7 +394,7 @@ class Model2Selector:
                 # all candidate MH breakpoints within min-segment bounds
                 cands = self._candidate_snaps(gen, A, B)
                 if not cands:
-                    # allow one low-weight unsnapped mid-point if no MH at all
+                    
                     min_seg = self._calc_min_segment(n)
                     bp_mid = n // 2
                     if min_seg <= bp_mid <= n - min_seg:
@@ -559,13 +555,13 @@ def main():
             sys.exit(1)
         logging.info(f"PCR amplicons: {len(parents)}")
 
-        # Sanity vs min-segment (fraction) on shortest amplicon
+        
         shortest = min(len(str(s.seq)) for s in parents)
         min_seg_short = max(1, int(round(shortest * args.min_segment)))
         if shortest < 2 * min_seg_short:
             logging.warning(f"Shortest amplicon length {shortest} < 2*min-segment ({2*min_seg_short}).")
 
-        # ---------- Simera-compatible effective rate (optional) ----------
+        # Simera-compatible effective rate
         if args.simera_rate:
             lens = np.array([len(str(s.seq)) for s in parents], dtype=float)
             phi = max(0.0, float(args.phi))
@@ -650,7 +646,7 @@ def main():
                 chimeras.append(rec)
                 metas.append(meta)
 
-            # If shortfall (empty pool or not enough), top up with original generator
+            
             remaining = total_chimeras - len(chimeras)
             if remaining > 0:
                 logging.info(f"Topping up {remaining} chimeras using original generator.")
@@ -663,7 +659,7 @@ def main():
                     metas.append(meta)
 
         else:
-            # Original generator: mix of bi/tri/multi
+            
             p_bi, p_tri = 0.9, 0.1
 
             def pick_parents(k: int) -> List[SeqRecord]:
