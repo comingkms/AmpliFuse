@@ -56,7 +56,7 @@ def write_meta_tsv(path: str, metas: List[ChimeraMeta]) -> None:
             writer.writerow(asdict(m))
 
 
-# PCR
+# in silico PCR
 
 def _resolve_ispcr_path(cli_path: Optional[str]) -> str:
     if cli_path:
@@ -231,8 +231,8 @@ class ChimeraGeneratorLite:
             self.stats_snapped += 1
             return snapped
 
-        # Auto grid search
-        best_tuple = None  # (priority_k_index, |t-bp|, t, k, w)
+        
+        best_tuple = None  
         for ki, k in enumerate(self.k_candidates):
             positions = self._build_kmer_snap_positions(A, B, k)
             if not positions:
