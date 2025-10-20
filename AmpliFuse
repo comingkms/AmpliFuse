@@ -699,7 +699,7 @@ def main():
         write_meta_tsv(meta_path, metas)
         logging.info(f"Wrote chimera provenance to {meta_path}")
 
-        # One-line snapping summary
+        # summary
         snapped = gen.stats_snapped
         unsnapped = gen.stats_unsnapped
         total = max(1, snapped + unsnapped)
